@@ -51,6 +51,7 @@ final class BaseWatchManager: NSObject, WCSessionDelegate, Injectable, WatchMana
     private var highGlucose: Decimal = 180.0
     private var activeBolusAmount: Double = 0.0
     private var lastComplicationTransferDate: Date = .distantPast
+    private var lastComplicationTransferZone: ComplicationTransferBudget.GlucoseZone?
 
     // Queue for handling Core Data change notifications
     private let queue = DispatchQueue(label: "BaseWatchManagerManager.queue", qos: .utility)
@@ -610,7 +611,7 @@ final class BaseWatchManager: NSObject, WCSessionDelegate, Injectable, WatchMana
 
         // Reachable means foreground: also send a message.
         guard session.isReachable else {
-            transferComplicationUpdateIfDue(session, payload: payload)
+            transferComplicationUpdateIfDue(session, payload: payload, state: state)
             return
         }
 
@@ -659,12 +660,29 @@ final class BaseWatchManager: NSObject, WCSessionDelegate, Injectable, WatchMana
 
     /// A closed watch app gets the context only when watchOS wakes it. When a complication is on the
     /// active face, a budgeted complication transfer wakes it so the face catches up.
-    @MainActor private func transferComplicationUpdateIfDue(_ session: WatchStateTransport, payload: [String: Any]) {
+    /// A move into or out of the low or high range, or a fast trend, is sent sooner than the even spread.
+    @MainActor private func transferComplicationUpdateIfDue(
+        _ session: WatchStateTransport,
+        payload: [String: Any],
+        state: WatchState
+    ) {
         let now = Date()
+        let latestGlucose = state.glucoseValues.max(by: { $0.date < $1.date })?.glucose
+        let zone = ComplicationTransferBudget.zone(
+            glucose: latestGlucose,
+            low: state.lowGlucoseLimit,
+            high: state.highGlucoseLimit
+        )
+        let isUrgent = ComplicationTransferBudget.isUrgent(
+            zone: zone,
+            lastTransferredZone: lastComplicationTransferZone,
+            trend: state.trend
+        )
         let isTransferDue = session.isComplicationEnabled && ComplicationTransferBudget.isTransferDue(
             at: now,
             lastTransfer: lastComplicationTransferDate,
-            remainingTransfers: session.remainingComplicationUserInfoTransfers
+            remainingTransfers: session.remainingComplicationUserInfoTransfers,
+            isUrgent: isUrgent
         )
         guard isTransferDue else { return }
         session.outstandingUserInfoTransfers
@@ -672,7 +690,11 @@ final class BaseWatchManager: NSObject, WCSessionDelegate, Injectable, WatchMana
             .forEach { $0.cancel() }
         session.transferCurrentComplicationUserInfo([WatchMessageKeys.watchState: payload])
         lastComplicationTransferDate = now
-        info(.watch, "Watch state sent as a complication update, \(session.remainingComplicationUserInfoTransfers) left today")
+        lastComplicationTransferZone = zone
+        info(
+            .watch,
+            "Watch state sent as a complication update\(isUrgent ? " (urgent)" : ""), \(session.remainingComplicationUserInfoTransfers) left today"
+        )
     }
 
     func sendAcknowledgment(toWatch success: Bool, message: String = "", ackCode: AcknowledgmentCode) {
@@ -1260,16 +1282,46 @@ extension BaseWatchManager {
 }
 
 enum ComplicationTransferBudget {
+    enum GlucoseZone: Equatable {
+        case low
+        case inRange
+        case high
+    }
+
     private static let minimumInterval: TimeInterval = 10 * 60
+    /// Urgent updates still wait this long after the last transfer.
+    private static let urgentMinimumInterval: TimeInterval = 5 * 60
+    /// Urgent updates stop once only this many transfers are left, so the rest of the day keeps its spread.
+    static let urgentReserve = 10
 
     static func isTransferDue(
         at date: Date,
         lastTransfer: Date,
         remainingTransfers: Int,
+        isUrgent: Bool = false,
         calendar: Calendar = .current
     ) -> Bool {
         guard remainingTransfers > 0, let endOfDay = calendar.dateInterval(of: .day, for: date)?.end else { return false }
+        let elapsed = date.timeIntervalSince(lastTransfer)
+        if isUrgent, remainingTransfers > urgentReserve, elapsed >= urgentMinimumInterval {
+            return true
+        }
         let spreadInterval = endOfDay.timeIntervalSince(date) / Double(remainingTransfers)
-        return date.timeIntervalSince(lastTransfer) >= max(spreadInterval, minimumInterval)
+        return elapsed >= max(spreadInterval, minimumInterval)
+    }
+
+    /// Limits are in the same units as the glucose value.
+    static func zone(glucose: Double?, low: Double?, high: Double?) -> GlucoseZone? {
+        guard let glucose else { return nil }
+        if let low, glucose <= low { return .low }
+        if let high, glucose >= high { return .high }
+        return .inRange
+    }
+
+    /// Urgent when glucose moved into or out of the low or high range since the last transfer, or the trend is fast.
+    static func isUrgent(zone: GlucoseZone?, lastTransferredZone: GlucoseZone?, trend: String?) -> Bool {
+        if let zone, let lastTransferredZone, zone != lastTransferredZone { return true }
+        guard let trend, let direction = BloodGlucose.Direction(from: trend) else { return false }
+        return [.doubleUp, .tripleUp, .doubleDown, .tripleDown].contains(direction)
     }
 }

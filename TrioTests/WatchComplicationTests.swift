@@ -423,6 +423,42 @@ import WatchConnectivity
         #expect(!isDueAfterTwentyMinutes)
     }
 
+    @Test("An urgent update skips the spread but keeps a short gap") func transferBudgetUrgent() {
+        let noon = londonDate(2026, 6, 1, 12)
+        func isDue(after elapsed: TimeInterval, remaining: Int, urgent: Bool) -> Bool {
+            ComplicationTransferBudget.isTransferDue(
+                at: noon,
+                lastTransfer: noon.addingTimeInterval(-elapsed),
+                remainingTransfers: remaining,
+                isUrgent: urgent,
+                calendar: londonCalendar()
+            )
+        }
+        #expect(!isDue(after: 6 * 60, remaining: 30, urgent: false))
+        #expect(isDue(after: 5 * 60, remaining: 30, urgent: true))
+        #expect(!isDue(after: 5 * 60 - 1, remaining: 30, urgent: true))
+        #expect(!isDue(after: 6 * 60, remaining: ComplicationTransferBudget.urgentReserve, urgent: true))
+    }
+
+    @Test("Range changes and fast trends are urgent") func transferUrgency() {
+        let zone = ComplicationTransferBudget.zone
+        #expect(zone(65, 70, 180) == .low)
+        #expect(zone(70, 70, 180) == .low)
+        #expect(zone(120, 70, 180) == .inRange)
+        #expect(zone(180, 70, 180) == .high)
+        #expect(zone(nil, 70, 180) == nil)
+
+        let isUrgent = ComplicationTransferBudget.isUrgent
+        #expect(isUrgent(.low, .inRange, "Flat"))
+        #expect(isUrgent(.inRange, .high, "Flat"))
+        #expect(!isUrgent(.low, .low, "FortyFiveDown"))
+        #expect(!isUrgent(.inRange, nil, "Flat"))
+        #expect(isUrgent(.inRange, .inRange, "DoubleDown"))
+        #expect(isUrgent(.inRange, .inRange, "TripleUp"))
+        #expect(!isUrgent(.inRange, .inRange, "SingleUp"))
+        #expect(!isUrgent(.inRange, .inRange, nil))
+    }
+
     @Test("The application context payload is a property list") func applicationContextIsPropertyList() throws {
         var state = WatchState(date: now)
         state.currentGlucose = "115"
