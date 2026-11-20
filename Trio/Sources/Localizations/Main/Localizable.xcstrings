@@ -1109,9 +1109,6 @@
         }
       }
     },
-    "Available Complications" : {
-
-    },
     "BG" : {
 
     },
@@ -89081,6 +89078,9 @@
           }
         }
       }
+    },
+    "Contact Image puts your glucose on the watch face through a Trio contact photo. It updates with every reading, unlike complications, which watchOS refreshes only a few times an hour. Tapping it opens Contacts, not Trio." : {
+
     },
     "Contact Name" : {
       "localizations" : {

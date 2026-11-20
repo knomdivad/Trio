@@ -105,69 +105,71 @@ struct WatchConfigAppleWatchView: BaseView {
                 miniHint: String(localized: "Shows forecast on the Apple Watch"),
                 verboseHint: Text(
                     "Enable this feature to show the forecast on the Apple Watch"
-                ),
-                headerText: String(localized: "Apple Watch Configuration")
+                )
             )
 
-            Section(
-                header: Text("Complication Settings"),
-                content: {
-                    VStack {
-                        Picker("Corner Label", selection: $state.complicationCornerValue) {
-                            ForEach(WatchComplicationValue.allCases) { value in
-                                Text(value.displayName).tag(value)
-                            }
-                        }.padding(.top)
-                        hintRow(
-                            miniHint: String(localized: "Curved text on Trio Glucose corner slots."),
-                            label: String(localized: "Corner Label"),
-                            hint: Self.cornerLabelHint
-                        )
-                    }
-                    VStack {
-                        Picker("Small Line", selection: $state.complicationSecondaryValue) {
-                            ForEach(WatchComplicationValue.allCases) { value in
-                                Text(value.displayName).tag(value)
-                            }
-                        }.padding(.top)
-                        hintRow(
-                            miniHint: String(localized: "Second line on Trio Glucose, Trio Gauge and Trio Chart."),
-                            label: String(localized: "Small Line"),
-                            hint: Self.smallLineHint
-                        )
-                    }
-                    VStack {
-                        Stepper(
-                            value: $state.complicationStaleMinutes,
-                            in: WatchComplicationDefaults.staleMinutesRange,
-                            step: WatchComplicationDefaults.staleMinutesStep
-                        ) {
-                            HStack {
-                                Text("Mark Stale After")
-                                Spacer()
-                                Text("\(state.complicationStaleMinutes) min").foregroundStyle(.secondary)
-                            }
-                        }.padding(.top)
-                        hintRow(
-                            miniHint: String(localized: "Show -- once data is older than this. Complications can lag."),
-                            label: String(localized: "Mark Stale After"),
-                            hint: Self.markStaleAfterHint
-                        )
-                    }
+            Section(header: Text("Complication Settings")) {
+                VStack {
+                    Picker("Corner Label", selection: $state.complicationCornerValue) {
+                        ForEach(WatchComplicationValue.allCases) { value in
+                            Text(value.displayName).tag(value)
+                        }
+                    }.padding(.top)
+                    hintRow(
+                        miniHint: String(localized: "Curved text on Trio Glucose corner slots."),
+                        label: String(localized: "Corner Label"),
+                        hint: Self.cornerLabelHint
+                    )
                 }
-            ).listRowBackground(Color.chart)
+            }.listRowBackground(Color.chart)
 
-            Section(
-                header: Text("Available Complications"),
-                content: {
-                    NavigationLink("Complication Previews") {
-                        WatchComplicationPreviewsView(preview: previewState)
-                    }.foregroundStyle(Color.accentColor)
+            Section {
+                VStack {
+                    Picker("Small Line", selection: $state.complicationSecondaryValue) {
+                        ForEach(WatchComplicationValue.allCases) { value in
+                            Text(value.displayName).tag(value)
+                        }
+                    }.padding(.top)
+                    hintRow(
+                        miniHint: String(localized: "Second line on Trio Glucose, Trio Gauge and Trio Chart."),
+                        label: String(localized: "Small Line"),
+                        hint: Self.smallLineHint
+                    )
                 }
-            ).listRowBackground(Color.chart)
+            }.listRowBackground(Color.chart)
+
+            Section {
+                VStack {
+                    Stepper(
+                        value: $state.complicationStaleMinutes,
+                        in: WatchComplicationDefaults.staleMinutesRange,
+                        step: WatchComplicationDefaults.staleMinutesStep
+                    ) {
+                        HStack {
+                            Text("Mark Stale After")
+                            Spacer()
+                            Text("\(state.complicationStaleMinutes) min").foregroundStyle(.secondary)
+                        }
+                    }.padding(.top)
+                    hintRow(
+                        miniHint: String(localized: "Show -- once data is older than this. Complications can lag."),
+                        label: String(localized: "Mark Stale After"),
+                        hint: Self.markStaleAfterHint
+                    )
+                }
+            }.listRowBackground(Color.chart)
+
+            Section {
+                NavigationLink("Complication Previews") {
+                    WatchComplicationPreviewsView(preview: previewState)
+                }.foregroundStyle(Color.accentColor)
+            }.listRowBackground(Color.chart)
 
             Section(
                 header: Text("Contact Image"),
+                footer: Text(
+                    "Contact Image puts your glucose on the watch face through a Trio contact photo. It updates with every reading, unlike complications, which watchOS refreshes only a few times an hour. Tapping it opens Contacts, not Trio."
+                ),
                 content: {
                     VStack {
                         HStack {
