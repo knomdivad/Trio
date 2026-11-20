@@ -469,17 +469,6 @@ import WatchConnectivity
         #expect(ComplicationStore.appGroupID(from: "group.org.example.trio") == "group.org.example.trio")
     }
 
-    @Test("Requests inside the debounce window build the watch state once") func watchStateRequestsCoalesce() {
-        let scheduler = ManualScheduler()
-        var builds = 0
-        let updates = WatchStateUpdateCoalescer(interval: .seconds(2), scheduler: scheduler) { builds += 1 }
-        updates.request()
-        scheduler.advance(by: .seconds(1))
-        updates.request()
-        scheduler.advance(by: .seconds(2))
-        #expect(builds == 1)
-    }
-
     @Test("Reloading clears its flag after reloading only installed data kinds") func complicationReloadClearsFlag() {
         var finishFetch: ([String]) -> Void = { _ in }
         var reloadedKinds: [String] = []
@@ -517,38 +506,6 @@ import WatchConnectivity
     }
 }
 
-private final class ManualScheduler: Scheduler {
-    typealias SchedulerTimeType = DispatchQueue.SchedulerTimeType
-    typealias Stride = SchedulerTimeType.Stride
-    private(set) var now = SchedulerTimeType(DispatchTime(uptimeNanoseconds: 1))
-    let minimumTolerance = Stride.zero
-    private var pending: [(dueDate: SchedulerTimeType, action: () -> Void)] = []
-
-    func schedule(options _: Never?, _ action: @escaping () -> Void) { action() }
-
-    func schedule(after date: SchedulerTimeType, tolerance _: Stride, options _: Never?, _ action: @escaping () -> Void) {
-        pending.append((date, action))
-    }
-
-    func schedule(
-        after date: SchedulerTimeType,
-        interval _: Stride,
-        tolerance _: Stride,
-        options _: Never?,
-        _ action: @escaping () -> Void
-    ) -> Cancellable {
-        pending.append((date, action))
-        return AnyCancellable {}
-    }
-
-    func advance(by interval: Stride) {
-        now = now.advanced(by: interval)
-        let due = pending.filter { $0.dueDate <= now }
-        pending.removeAll { $0.dueDate <= now }
-        due.forEach { $0.action() }
-    }
-}
-
 @MainActor @Suite("Closed watch delivery", .serialized) struct ClosedWatchDeliveryTests {
     private let transport = FakeWatchTransport()
     private let entityChanges = PassthroughSubject<Set<NSManagedObjectID>, Never>()
@@ -563,8 +520,7 @@ private final class ManualScheduler: Scheduler {
         ]).resolver
         manager = BaseWatchManager(
             resolver: resolver,
-            entityChanges: entityChanges.eraseToAnyPublisher(),
-            watchStateDebounce: .milliseconds(300)
+            entityChanges: entityChanges.eraseToAnyPublisher()
         )
         manager.session = transport
         try await transport.discardStartupDeliveries(quietFor: 0.6)
@@ -591,10 +547,10 @@ private final class ManualScheduler: Scheduler {
         #expect(transport.messages.isEmpty)
     }
 
-    @Test("Six changes inside the debounce window reach a closed watch once") func changesInsideWindowReachOnce() async throws {
+    /// Snooze pushes right away by design, so it is not part of the bundled changes.
+    @Test("Five changes inside the bundling window reach a closed watch once") func changesInsideWindowReachOnce() async throws {
         manager.settingsDidChange(TrioSettings())
         manager.pumpSettingsDidChange(PumpSettings(insulinActionCurve: 10, maxBolus: 10, maxBasal: 2))
-        manager.snoozeDidChange(Date())
         entityChanges.send(entityChange("OverrideStored"))
         entityChanges.send(entityChange("TempTargetStored"))
         entityChanges.send(entityChange("GlucoseStored"))

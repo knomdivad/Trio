@@ -4,29 +4,32 @@ import WatchKit
 
 @main struct TrioWatchApp: App {
     @Environment(\.scenePhase) private var scenePhase
-    private let state = WatchState()
 
     init() {
+        _ = WatchState.shared
         WatchNotificationHandler.shared.configure()
         WatchLogger.shared.info(.lifecycle, "App launched")
     }
 
     var body: some Scene {
         WindowGroup {
-            TrioMainWatchView(state: state)
+            TrioMainWatchView()
         }
         .onChange(of: scenePhase) { _, newScenePhase in
+            WatchState.shared.setAppActive(newScenePhase == .active)
             if newScenePhase == .background {
                 WatchLogger.shared.info(.lifecycle, "App moved to background")
                 WatchLogger.shared.didEnterBackground()
                 WatchBackgroundRefresh.schedule()
+            } else if newScenePhase == .active {
+                WatchState.shared.refreshIfNeeded()
             }
         }
         .backgroundTask(.appRefresh) { _ in
-            await WatchBackgroundRefresh.refresh(state)
+            await WatchBackgroundRefresh.refresh(WatchState.shared)
         }
         .backgroundTask(.watchConnectivity) {
-            await WatchBackgroundRefresh.settle(state)
+            await WatchBackgroundRefresh.settle(WatchState.shared)
         }
     }
 }
